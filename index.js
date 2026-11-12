@@ -76,7 +76,8 @@ export const guide = {
   studio: {
     doctor: {action:'doctor'},
     voice: {action:'voice', dialogue:'/absolute/dialogue.json', output:'/absolute/new-narration.wav', dry_run:true},
-    render: {action:'render', project:'/absolute/project.json', output_dir:'/absolute/new-output-directory', platform:'bilibili'},
+    render: {action:'render', project:'/absolute/project.json', output_dir:'/absolute/new-output-directory', platform:'bilibili', resolution:'1080p', fps:60},
+    video_formats: {default:'1080p', fps:60, bilibili:{'1080p':[1920,1080], '2k':[2560,1440]}, douyin:{'1080p':[1080,1920], '2k':[1440,2560]}, note:'resolution可设1080p或2k，2K采用2560×1440；请求优先于项目JSON，帧率固定60fps。'},
     project: {title:'视频标题', characters:{'旁白':{gpt_weights:'/absolute/voice.ckpt', sovits_weights:'/absolute/voice.pth', ref_audio_path:'/absolute/reference.wav', prompt_text:'参考音频原文', prompt_lang:'zh', text_lang:'zh'}}, scenes:[{speaker:'旁白', heading:'开场', text:'旁白台词', image:'/absolute/optional-image.png'}]},
     note: 'characters使用指定技能格式。模型、参考音频须真实存在，先voice dry_run再短句试听。render也可用每段audio字段导入已有配音，结果标记provided_audio。字体默认macOS苹方；可配置project.font。'
   },

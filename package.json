@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-video-operator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "本地 GPT-SoVITS 配音制片与 B站、抖音发布运营",
   "type": "module",
   "license": "MIT",

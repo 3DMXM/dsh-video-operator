@@ -17,6 +17,21 @@ def stamp(seconds):
     ms = round(seconds * 1000)
     return f'{ms//3600000:02}:{ms//60000%60:02}:{ms//1000%60:02},{ms%1000:03}'
 
+def video_settings(req, project):
+    platform = req.get('platform', project.get('platform', 'bilibili'))
+    if platform not in ('bilibili', 'douyin'):
+        raise Failure('INVALID_PLATFORM', str(platform))
+    resolution = str(req.get('resolution', project.get('resolution', '1080p'))).strip().lower()
+    if resolution not in ('1080p', '2k'):
+        raise Failure('INVALID_RESOLUTION', 'resolution仅支持1080p或2k（2560×1440）')
+    fps = req.get('fps', project.get('fps', 60))
+    if isinstance(fps, bool) or fps != 60:
+        raise Failure('INVALID_FPS', '当前视频帧率固定为60fps')
+    width, height = (1920, 1080) if resolution == '1080p' else (2560, 1440)
+    if platform == 'douyin':
+        width, height = height, width
+    return platform, resolution, width, height, 60
+
 def voice(req):
     skill = Path(req.get('skill_dir', SKILL)).expanduser().resolve()
     manifest = Path(req['dialogue']).expanduser().resolve()
@@ -41,17 +56,17 @@ def render(req):
     scenes = project['scenes']
     if not 1 <= len(scenes) <= 100:
         raise Failure('INVALID_PROJECT', '需要1到100个分镜')
-    platform = req.get('platform', project.get('platform', 'bilibili'))
-    if platform not in ('bilibili', 'douyin'):
-        raise Failure('INVALID_PLATFORM', platform)
-    width, height = (1280, 720) if platform == 'bilibili' else (720, 1280)
+    platform, resolution, width, height, fps = video_settings(req, project)
+    scale = min(width, height) / 720
+    margin, top, spacing = round(60 * scale), round(70 * scale), round(18 * scale)
+    text_width = width - 2 * margin
     out = Path(req['output_dir']).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=False)
     font_path = project.get('font') or next((str(p) for p in [Path('/System/Library/Fonts/PingFang.ttc'), Path('/System/Library/Fonts/Supplemental/Songti.ttc'), Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'), Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')] if p.exists()), None)
     if not font_path:
         raise Failure('FONT_MISSING', '请在项目font字段指定支持中文的字体')
-    font = ImageFont.truetype(font_path, 44 if platform == 'bilibili' else 38)
-    title_font = ImageFont.truetype(font_path, 60)
+    font = ImageFont.truetype(font_path, round((44 if platform == 'bilibili' else 38) * scale))
+    title_font = ImageFont.truetype(font_path, round(60 * scale))
     dialogue = project.get('characters')
     if dialogue:
         chars = json.loads(json.dumps(dialogue))
@@ -91,16 +106,17 @@ def render(req):
                     line += ch
             if line: lines.append(line)
             return '\n'.join(lines)
-        draw.text((60, 70), wrap(scene.get('heading', project.get('title', '')), title_font, width-120), font=title_font, fill='#7dd3fc', spacing=18)
-        body = wrap(scene.get('caption', scene['text']), font, width-120)
-        bbox = draw.multiline_textbbox((0,0), body, font=font, spacing=18)
-        if bbox[3] > height * .65:
+        draw.text((margin, top), wrap(scene.get('heading', project.get('title', '')), title_font, text_width), font=title_font, fill='#7dd3fc', spacing=spacing)
+        body = wrap(scene.get('caption', scene['text']), font, text_width)
+        body_y = round(max(height * .38, 220 * scale))
+        bbox = draw.multiline_textbbox((0, 0), body, font=font, spacing=spacing)
+        if body_y + bbox[3] > height - margin:
             raise Failure('TEXT_OVERFLOW', f'分镜{i}文字过长，请拆分')
-        draw.multiline_text((60, max(height*.38, 220)), body, font=font, fill='white', spacing=18)
+        draw.multiline_text((margin, body_y), body, font=font, fill='white', spacing=spacing)
         frame, clip = out/f'frame-{i:03}.png', out/f'clip-{i:03}.mp4'
         image.save(frame)
         if i == 1: image.save(out/'cover.png')
-        run(['ffmpeg', '-v', 'error', '-n', '-loop', '1', '-i', frame, '-i', audio, '-t', str(duration), '-r', '25', '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-shortest', clip])
+        run(['ffmpeg', '-v', 'error', '-n', '-loop', '1', '-framerate', str(fps), '-i', frame, '-i', audio, '-t', str(duration), '-r', str(fps), '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-shortest', clip])
         clips.append(clip)
         subtitles.append(f'{i}\n{stamp(elapsed)} --> {stamp(elapsed+duration)}\n{scene["text"]}\n')
         elapsed += duration
@@ -108,7 +124,7 @@ def render(req):
     concat.write_text('\n'.join(f"file '{p.name}'" for p in clips), encoding='utf-8')
     run(['ffmpeg', '-v', 'error', '-n', '-f', 'concat', '-safe', '1', '-i', concat, '-c', 'copy', '-movflags', '+faststart', out/'video.mp4'])
     (out/'subtitles.srt').write_text('\n'.join(subtitles), encoding='utf-8')
-    result = {'video': str(out/'video.mp4'), 'cover': str(out/'cover.png'), 'subtitles': str(out/'subtitles.srt'), 'duration': probe(out/'video.mp4'), 'platform': platform, 'width': width, 'height': height, 'voice_engine': engine, 'listened': False}
+    result = {'video': str(out/'video.mp4'), 'cover': str(out/'cover.png'), 'subtitles': str(out/'subtitles.srt'), 'duration': probe(out/'video.mp4'), 'platform': platform, 'resolution': resolution, 'width': width, 'height': height, 'fps': fps, 'voice_engine': engine, 'listened': False}
     save(out/'manifest.json', result)
     return result
 

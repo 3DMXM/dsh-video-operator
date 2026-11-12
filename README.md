@@ -2,13 +2,13 @@
 
 本地制片、B站与抖音发布、作品和评论运营的 DSH 插件。参考 [dsh-bili-creator](https://github.com/men-qingzheng/dsh-bili-creator) 的“本地制作 + 平台适配”结构，独立实现，插件 ID 为 `video-operator`，可与参考插件区分。配音通过本地 `gpt-sovits` 技能调用 GPT-SoVITS，默认技能目录为 `~/.codex/skills/gpt-sovits`，可在配置中修改。技能脚本、推理环境和模型需自行准备，本仓库不分发模型或替代语音引擎。
 
-[下载 v0.1.0](https://github.com/3DMXM/dsh-video-operator/releases/tag/v0.1.0) · [问题反馈](https://github.com/3DMXM/dsh-video-operator/issues) · [验证记录](VERIFICATION.md)
+[下载 v0.1.1](https://github.com/3DMXM/dsh-video-operator/releases/tag/v0.1.1) · [问题反馈](https://github.com/3DMXM/dsh-video-operator/issues) · [验证记录](VERIFICATION.md)
 
 ## 已实现
 
 | 能力 | B站 | 抖音 |
 | --- | --- | --- |
-| 制片 | 1280×720，25fps | 720×1280，25fps |
+| 制片 | 默认1920×1080，可选2560×1440，60fps | 默认1080×1920，可选1440×2560，60fps |
 | 配音 | GPT-SoVITS 单/多角色；可导入已有音频 | 同左 |
 | 画面 | 本地图片/文字卡、分镜标题与正文 | 同左 |
 | 产物 | MP4、PNG封面、SRT、制片清单 | 同左 |
@@ -32,7 +32,7 @@ uv pip install --python .venv/bin/python -r requirements.txt
 
 然后在 DSH 的“插件 → 添加插件”选择克隆的目录，或让会话通过 `plugin_manager` 安装该目录。插件会自动发现自身 `.venv` 下的 Python 和 bili；未找到时使用系统命令，也可以在插件配置中指定绝对路径。Windows 的虚拟环境命令位于 `.venv/Scripts/`。
 
-也可以下载 Release 中的 `local-dsh-video-operator-0.1.0.tgz`，在插件管理器中安装；安装包不包含 Python 环境，需另行准备环境并配置 `pythonPath` 和 `biliExecutable`。安装结果如提示需要重启，请按提示重启 DSH。
+也可以下载 Release 中的 `local-dsh-video-operator-0.1.1.tgz`，在插件管理器中安装；安装包不包含 Python 环境，需另行准备环境并配置 `pythonPath` 和 `biliExecutable`。安装结果如提示需要重启，请按提示重启 DSH。
 
 系统需有 `ffmpeg`、`ffprobe`。在 DSH 插件配置中可设置 `pythonPath`、`stateDir`、`sovitsSkillDir`、`biliExecutable`、`douyinCredentials`。默认状态目录是 `~/.local/share/dsh-video-operator`，存放发布计划、审计以及独立 B站登录，不把凭证放入源代码包。
 
@@ -81,8 +81,10 @@ uv pip install --python .venv/bin/python -r requirements.txt
 `video_studio` 请求例：
 
 ```json
-{"request":{"action":"render","project":"/absolute/project.json","output_dir":"/absolute/new-output","platform":"douyin"}}
+{"request":{"action":"render","project":"/absolute/project.json","output_dir":"/absolute/new-output","platform":"douyin","resolution":"2k","fps":60}}
 ```
+
+默认输出1080P；`resolution` 支持 `1080p` 和 `2k`（不区分大小写），也可写在项目JSON顶层，请求参数优先。2K在本插件中指2560×1440横屏或1440×2560竖屏。所有输出固定60fps；封面、字体、边距和行距随画布尺寸同步缩放。制片清单记录 `resolution`、`width`、`height` 和 `fps`。
 
 分镜的 `text` 为旁白，`heading` 为画面标题，`caption` 可覆盖画面正文，`image` 为可选背景。`characters` 与指定技能格式一致。相对模型和图片路径以项目JSON目录为基准。每段导入 `audio` 时移除 `characters`；结果会标记 `provided_audio`，不会声称重新生成了配音。输出目录必须不存在，避免覆盖。默认寻找macOS中文字体，可用项目的 `font` 指定字体。
 

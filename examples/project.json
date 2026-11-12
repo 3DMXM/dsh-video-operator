@@ -1,5 +1,7 @@
 {
   "title": "视频创作插件试片",
+  "resolution": "1080p",
+  "fps": 60,
   "characters": {
     "旁白": {
       "gpt_weights": "../voices/narrator/voice.ckpt",
