@@ -1,0 +1,25 @@
+{
+  "title": "沐朵 · 来客手账",
+  "resolution": "1080p",
+  "fps": 60,
+  "live2d": {
+    "enabled": true,
+    "motion": "Idle",
+    "expression": "Neutral",
+    "lip_sync": true
+  },
+  "scenes": [
+    {
+      "heading": "欢迎。先坐一会儿。",
+      "text": "欢迎来到Mod客栈。",
+      "audio": "../voices/narrator/welcome.wav",
+      "live2d": {"motion": "Greet", "expression": "Attentive"}
+    },
+    {
+      "heading": "记录给我。先确认原因。",
+      "text": "这个我不确定。先把版本和记录给我。",
+      "audio": "../voices/narrator/think.wav",
+      "live2d": {"motion": "Think", "expression": "Curious"}
+    }
+  ]
+}

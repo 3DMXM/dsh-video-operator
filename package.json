@@ -1,17 +1,63 @@
 {
   "name": "@local/dsh-video-operator",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "本地 GPT-SoVITS 配音制片与 B站、抖音发布运营",
   "type": "module",
   "license": "MIT",
   "private": true,
-  "repository": {"type": "git", "url": "https://github.com/3DMXM/dsh-video-operator.git"},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/3DMXM/dsh-video-operator.git"
+  },
   "homepage": "https://github.com/3DMXM/dsh-video-operator#readme",
-  "bugs": {"url": "https://github.com/3DMXM/dsh-video-operator/issues"},
-  "keywords": ["dsh", "dsh-plugin", "bilibili", "douyin", "gpt-sovits", "video"],
-  "exports": {".": "./index.js", "./package.json": "./package.json", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg"},
-  "files": ["index.js", "persona.js", "prompts/*.md", "tests/*.test.mjs", "python/*.py", "locale", "icon.svg", "cordis.patch.yml", "README.md", "VERIFICATION.md", "LICENSE", "NOTICE.md", "examples", "requirements.txt", "tests/*.py"],
-  "engines": {"dsh": ">=0.2.2-rc.2", "node": ">=22"},
-  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
-  "scripts": {"test": "python3 -m unittest discover -s tests -v && node --test tests/persona.test.mjs"}
+  "bugs": {
+    "url": "https://github.com/3DMXM/dsh-video-operator/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "bilibili",
+    "douyin",
+    "gpt-sovits",
+    "video"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "persona.js",
+    "live2d/*.mjs",
+    "prompts/*.md",
+    "tests/*.test.mjs",
+    "python/*.py",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "VERIFICATION.md",
+    "LICENSE",
+    "NOTICE.md",
+    "examples",
+    "requirements.txt",
+    "tests/*.py"
+  ],
+  "engines": {
+    "dsh": ">=0.2.2-rc.2",
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "python3 -m unittest discover -s tests -v && node --test tests/persona.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
 }

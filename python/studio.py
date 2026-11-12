@@ -6,6 +6,7 @@ import shutil
 import sys
 import wave
 from common import Failure, cli, load, lock, run, save
+from avatar import DEFAULT_ROOT, avatar_settings, render_avatar
 
 SKILL = Path.home() / '.codex' / 'skills' / 'gpt-sovits'
 
@@ -60,6 +61,9 @@ def render(req):
     scale = min(width, height) / 720
     margin, top, spacing = round(60 * scale), round(70 * scale), round(18 * scale)
     text_width = width - 2 * margin
+    avatar = avatar_settings(project, req, platform, base)
+    if avatar and platform == 'bilibili':
+        text_width = max(round(width * .25), round(width * avatar['box']['x']) - 2 * margin)
     out = Path(req['output_dir']).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=False)
     font_path = project.get('font') or next((str(p) for p in [Path('/System/Library/Fonts/PingFang.ttc'), Path('/System/Library/Fonts/Supplemental/Songti.ttc'), Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'), Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')] if p.exists()), None)
@@ -86,6 +90,7 @@ def render(req):
         audios = [(base / s['audio']).resolve() for s in scenes]
         engine = 'provided_audio'
     clips, subtitles, elapsed = [], [], 0.0
+    avatar_reports = []
     for i, (scene, audio) in enumerate(zip(scenes, audios), 1):
         duration = probe(audio)
         if duration <= 0:
@@ -108,15 +113,27 @@ def render(req):
             return '\n'.join(lines)
         draw.text((margin, top), wrap(scene.get('heading', project.get('title', '')), title_font, text_width), font=title_font, fill='#7dd3fc', spacing=spacing)
         body = wrap(scene.get('caption', scene['text']), font, text_width)
-        body_y = round(max(height * .38, 220 * scale))
+        body_y = round(height * .25) if avatar and platform == 'douyin' else round(max(height * .38, 220 * scale))
         bbox = draw.multiline_textbbox((0, 0), body, font=font, spacing=spacing)
-        if body_y + bbox[3] > height - margin:
+        body_bottom = round(height * avatar['box']['y']) - spacing if avatar and platform == 'douyin' else height - margin
+        if body_y + bbox[3] > body_bottom:
             raise Failure('TEXT_OVERFLOW', f'分镜{i}文字过长，请拆分')
         draw.multiline_text((margin, body_y), body, font=font, fill='white', spacing=spacing)
         frame, clip = out/f'frame-{i:03}.png', out/f'clip-{i:03}.mp4'
         image.save(frame)
-        if i == 1: image.save(out/'cover.png')
-        run(['ffmpeg', '-v', 'error', '-n', '-loop', '1', '-framerate', str(fps), '-i', frame, '-i', audio, '-t', str(duration), '-r', str(fps), '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-shortest', clip])
+        args = ['ffmpeg', '-v', 'error', '-n', '-loop', '1', '-framerate', str(fps), '-i', frame, '-i', audio]
+        if avatar:
+            rendered = render_avatar(avatar, scene, audio, duration, fps, width, height, out, i, req)
+            avatar_reports.append(rendered['report'])
+            args += ['-framerate', str(fps), '-i', rendered['frames'], '-filter_complex', f"[0:v][2:v]overlay={rendered['x']}:{rendered['y']}:shortest=1:format=auto[v]", '-map', '[v]', '-map', '1:a:0']
+            if i == 1:
+                cover = image.convert('RGBA')
+                with Image.open(rendered['first_frame']) as character:
+                    cover.alpha_composite(character.convert('RGBA'), (rendered['x'], rendered['y']))
+                cover.convert('RGB').save(out/'cover.png')
+        elif i == 1:
+            image.save(out/'cover.png')
+        run(args + ['-t', str(duration), '-r', str(fps), '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-shortest', clip])
         clips.append(clip)
         subtitles.append(f'{i}\n{stamp(elapsed)} --> {stamp(elapsed+duration)}\n{scene["text"]}\n')
         elapsed += duration
@@ -125,6 +142,8 @@ def render(req):
     run(['ffmpeg', '-v', 'error', '-n', '-f', 'concat', '-safe', '1', '-i', concat, '-c', 'copy', '-movflags', '+faststart', out/'video.mp4'])
     (out/'subtitles.srt').write_text('\n'.join(subtitles), encoding='utf-8')
     result = {'video': str(out/'video.mp4'), 'cover': str(out/'cover.png'), 'subtitles': str(out/'subtitles.srt'), 'duration': probe(out/'video.mp4'), 'platform': platform, 'resolution': resolution, 'width': width, 'height': height, 'fps': fps, 'voice_engine': engine, 'listened': False}
+    if avatar:
+        result['live2d'] = {'enabled':True, 'model_version':avatar['release']['version'], 'box':avatar['box'], 'segments':avatar_reports, 'interaction':'scripted motions/expressions and amplitude lip sync; no camera or microphone'}
     save(out/'manifest.json', result)
     return result
 
@@ -134,7 +153,7 @@ def dispatch(req):
             import PIL
             pillow = PIL.__version__
         except ImportError: pillow = None
-        return {'python': sys.executable, 'ffmpeg': shutil.which('ffmpeg'), 'ffprobe': shutil.which('ffprobe'), 'pillow': pillow, 'sovits_skill': str(SKILL), 'sovits_script_exists': (SKILL/'scripts/synthesize.py').is_file()}
+        return {'python': sys.executable, 'ffmpeg': shutil.which('ffmpeg'), 'ffprobe': shutil.which('ffprobe'), 'pillow': pillow, 'sovits_skill': str(SKILL), 'sovits_script_exists': (SKILL/'scripts/synthesize.py').is_file(), 'live2d': {'root':str(req.get('live2d_root') or DEFAULT_ROOT), 'release_exists':(Path(req.get('live2d_root') or DEFAULT_ROOT)/'release.json').is_file(), 'node':req.get('node_path') or shutil.which('node'), 'browser_executable':req.get('browser_executable') or '', 'playwright_installed':(Path(__file__).resolve().parents[1]/'node_modules/playwright/package.json').is_file(), 'note':'存在检查不证明WebGL可渲染；启用live2d后的实际导出会验证Core、MOC和纹理'}}
     if req['action'] == 'voice': return voice(req)
     if req['action'] == 'render': return render(req)
     raise Failure('INVALID_ACTION', req['action'])

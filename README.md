@@ -2,7 +2,7 @@
 
 本地制片、B站与抖音发布、作品和评论运营的 DSH 插件。参考 [dsh-bili-creator](https://github.com/men-qingzheng/dsh-bili-creator) 的“本地制作 + 平台适配”结构，独立实现，插件 ID 为 `video-operator`，可与参考插件区分。配音通过本地 `gpt-sovits` 技能调用 GPT-SoVITS，默认技能目录为 `~/.codex/skills/gpt-sovits`，可在配置中修改。技能脚本、推理环境和模型需自行准备，本仓库不分发模型或替代语音引擎。
 
-[下载 v0.1.2](https://github.com/3DMXM/dsh-video-operator/releases/tag/v0.1.2) · [问题反馈](https://github.com/3DMXM/dsh-video-operator/issues) · [验证记录](VERIFICATION.md)
+[下载 v0.1.3](https://github.com/3DMXM/dsh-video-operator/releases/tag/v0.1.3) · [问题反馈](https://github.com/3DMXM/dsh-video-operator/issues) · [验证记录](VERIFICATION.md)
 
 ## 已实现
 
@@ -32,9 +32,9 @@ uv pip install --python .venv/bin/python -r requirements.txt
 
 然后在 DSH 的“插件 → 添加插件”选择克隆的目录，或让会话通过 `plugin_manager` 安装该目录。插件会自动发现自身 `.venv` 下的 Python 和 bili；未找到时使用系统命令，也可以在插件配置中指定绝对路径。Windows 的虚拟环境命令位于 `.venv/Scripts/`。
 
-也可以下载 Release 中的 `local-dsh-video-operator-0.1.2.tgz`，在插件管理器中安装；安装包不包含 Python 环境，需另行准备环境并配置 `pythonPath` 和 `biliExecutable`。安装结果如提示需要重启，请按提示重启 DSH。
+也可以下载 Release 中的 `local-dsh-video-operator-0.1.3.tgz`，在插件管理器中安装；安装包不包含 Python 环境，需另行准备环境并配置 `pythonPath` 和 `biliExecutable`。安装结果如提示需要重启，请按提示重启 DSH。
 
-系统需有 `ffmpeg`、`ffprobe`。在 DSH 插件配置中可设置 `pythonPath`、`stateDir`、`sovitsSkillDir`、`biliExecutable`、`douyinCredentials`、`personaPath`。默认状态目录是 `~/.local/share/dsh-video-operator`，存放发布计划、审计以及独立 B站登录，不把凭证放入源代码包。
+系统需有 `ffmpeg`、`ffprobe`。在 DSH 插件配置中可设置 `pythonPath`、`stateDir`、`sovitsSkillDir`、`biliExecutable`、`douyinCredentials`、`personaPath`、`live2dRoot`、`browserExecutable`。默认状态目录是 `~/.local/share/dsh-video-operator`，存放发布计划、审计以及独立 B站登录，不把凭证放入源代码包。
 
 插件按当前 DSH 0.2.2-rc.2 的实际工具API构建，从正在运行的安装树解析依赖，支持 Electron ASAR；无运行中的 DSH 环境时不能直接用普通 node 加载宿主模块。支持的最低版本通过 package engines 限定。
 
@@ -67,7 +67,7 @@ uv pip install --python .venv/bin/python -r requirements.txt
 
 制作时按平台生成对应画布。发布预览与执行前都使用 `ffprobe` 检查真实视频流，结合旋转元数据、像素宽高比判断显示方向；方向不符或方形视频返回 `ORIENTATION_MISMATCH`，不会上传。无效视频或缺少ffprobe也会明确失败。此规则同样适用于外部导入的视频和更新前保存的预览计划，不自动裁切或拉伸素材。
 
-默认创作角色为 **沐朵 · Mod客栈看板娘**：成年女性、白发、无口、冷淡但认真；语速稍慢、音量偏轻、语调平稳，句子简短且保留必要解释；平等对待新手和作者，不毒舌、不撒娇、不装作全知。用于脚本、标题简介、宣传、教程、答疑和评论草案，两平台保持同一人格。
+默认创作角色为 **沐朵 · Mod客栈虚拟艺人**：成年女性、白发、无口、冷淡可爱，慢热而有温度；无口表示表达克制，不代表没有感情。她有自己的偏好、幽默和成长，能分享日常、游戏和心情，也认真做好教程和答疑。用于脚本、标题简介、宣传、教程、答疑和评论草案；两平台核心人格一致、账号语境和互动记录独立。
 
 在插件配置的 `personaPath` 指定本地人设Markdown文件，指南每次调用都会读取最新原文。当前工作区若存在相邻的 `glossmod/看板娘/mod-inn-muduo/readme.md`，会自动作为默认来源；其他安装使用随包整理的 [沐朵设定](prompts/muduo.md)。显式配置文件缺失、为空或超过64KiB会报错，不静默替换。创作前调用 `video_operator_guide` 同时获得人设与平台规则。
 
@@ -104,6 +104,35 @@ uv pip install --python .venv/bin/python -r requirements.txt
 分镜的 `text` 为旁白，`heading` 为画面标题，`caption` 可覆盖画面正文，`image` 为可选背景。`characters` 与指定技能格式一致。相对模型和图片路径以项目JSON目录为基准。每段导入 `audio` 时移除 `characters`；结果会标记 `provided_audio`，不会声称重新生成了配音。输出目录必须不存在，避免覆盖。默认寻找macOS中文字体，可用项目的 `font` 指定字体。
 
 字幕单独交付，并在文字卡中显示正文。暂未实现动画剪辑、BGM混音、素材搜索或独立字幕上传。
+
+### Live2D 出镜与互动表演
+
+可选启用本地沐朵 **V2.9** 模型，在视频内输出真实Core/WebGL动作、微表情和配音口型，再透明叠加到成片及封面。这里的互动是预先编排的视频表演，成片不会接收观众实时输入。不使用摄像头或麦克风，音频来自当前分镜配音。
+
+先在插件目录运行 `npm install` 安装Playwright。提供可用的Chromium/Chrome：在插件配置中填写 `browserExecutable`，或独立请求填写 `browser_executable`。未指定时使用Playwright已安装的Chromium；可通过 `npx playwright install chromium` 单独安装浏览器。本机macOS会发现已安装的Google Chrome。
+
+`live2dRoot` 指向包含 `release.json` 的角色Live2D目录；当前工作区会发现相邻的 `glossmod/看板娘/mod-inn-muduo/live2d`，也可在项目 `live2d.root` 显式配置。资源必须包含完整runtime模型与V2.9 preview目录中的合法本地Core、PixiJS 6.5.10和pixi-live2d-display 0.4.0。不修改模型或历史预览；渲染器只在临时本地HTTP响应中接入逐帧时钟。资源缺失、指纹不符或WebGL不可用时停止，绝不退回静态立绘伪装模型成功。
+
+在分镜项目中添加：
+
+```json
+{
+  "live2d": {"enabled": true, "motion": "Idle", "expression": "Neutral", "lip_sync": true},
+  "scenes": [
+    {"heading": "记录给我", "text": "先确认原因。", "audio": "/path/to/narration.wav", "live2d": {"motion": "Think", "expression": "Curious"}}
+  ]
+}
+```
+
+此片段省略了标题和配音角色配置；使用GPT-SoVITS时保留 `characters`，替换每段 `audio` 为 `speaker`。不设置项目 `live2d` 或设为false时，仍使用原文字卡流程。
+
+- 分镜动作：Idle、Greet、ReadBook、Think、Drowsy、Tiptoe、StepForward、StepSideLeft、StepSideRight、Talk、Blink、Nod、Shake。仅使用模型已注册动作，不恢复Wave、GuideLeft、GuideRight。
+- 微表情：Neutral、Attentive、Curious、Sleepy。每段可覆盖项目默认动作和表情；动作结束遵循模型回到默认/待机的行为。段间重新加载模型，当前没有跨分镜连续动作过渡。
+- 口型：按配音逐帧RMS振幅计算开口，平滑并限制幅度，静音闭嘴；不是音素/字形识别。`lip_sync:false` 可保留动作自己的嘴部状态。
+- 排版：横屏角色默认位于右侧，竖屏位于下方；正文区域避让。项目 `live2d.box` 可设置 `x/y/width/height`，数值为0到1的画布比例，必须完全位于画面内；自定义布局仍需检查遮挡。
+- 产物：每段保留透明PNG序列及渲染报告；报告记录MOC、图集及适配器SHA、Core/浏览器版本、口型采样、帧数与动作表情。逐帧渲染比普通文字卡耗时且占磁盘，长片应先做短句测试。
+
+本插件只分发原创桥接代码，不包含Live2D模型、图集、Core或角色音色。使用本地模型不等于取得公开分发模型或第三方SDK的授权。本次没有修改原角色资源。
 
 ### B站登录
 

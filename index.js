@@ -36,6 +36,8 @@ export const Config = Schema.object({
   sovitsSkillDir: Schema.string().default(join(homedir(), '.codex', 'skills', 'gpt-sovits')).description('GPT-SoVITS skill directory'),
   biliExecutable: Schema.string().default(existsSync(localBili) ? localBili : '').description('Absolute path to bili executable (bili-agent)'),
   personaPath: Schema.string().default(existsSync(localPersona) ? localPersona : '').description('Local 沐朵 persona Markdown path; empty uses the bundled persona. Re-read on each guide call.'),
+  live2dRoot: Schema.string().default(existsSync(resolve(localPersona, '..', 'live2d', 'release.json')) ? resolve(localPersona, '..', 'live2d') : '').description('Local 沐朵 Live2D directory containing release.json; assets remain local'),
+  browserExecutable: Schema.string().default(process.platform === 'darwin' && existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome') ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '').description('Chromium/Chrome executable for optional Live2D video export'),
   douyinCredentials: Schema.string().default('').description('Path to private JSON with open_id and access_token; never enter tokens here'),
 }).description('Video operator / 视频创作运营')
 
@@ -44,7 +46,8 @@ export async function runBackend(config, backend, request, signal) {
   try {
     const input = join(dir, 'request.json')
     await writeFile(input, JSON.stringify({ ...request, state_dir: config.stateDir, skill_dir: config.sovitsSkillDir,
-      bili_executable: config.biliExecutable, douyin_credentials: config.douyinCredentials }), {mode: 0o600})
+      bili_executable: config.biliExecutable, douyin_credentials: config.douyinCredentials,
+       live2d_root: config.live2dRoot || '', browser_executable: config.browserExecutable || '', node_path: process.execPath }), {mode: 0o600})
     return await new Promise((accept, reject) => {
       const child = spawn(config.pythonPath, [join(root, 'python', backend+'.py'), '--request', input], {
         signal, env: {...process.env, PYTHONUTF8: '1'}, stdio: ['ignore', 'pipe', 'pipe'],
@@ -85,6 +88,7 @@ export const guide = {
     doctor: {action:'doctor'},
     voice: {action:'voice', dialogue:'/absolute/dialogue.json', output:'/absolute/new-narration.wav', dry_run:true},
     render: {action:'render', project:'/absolute/project.json', output_dir:'/absolute/new-output-directory', platform:'bilibili', resolution:'1080p', fps:60},
+    live2d: {project:{live2d:{enabled:true,motion:'Idle',expression:'Neutral',lip_sync:true}},scene:{live2d:{motion:'Think',expression:'Curious'}},motions:['Idle','Greet','ReadBook','Think','Drowsy','Tiptoe','StepForward','StepSideLeft','StepSideRight','Talk','Blink','Nod','Shake'],expressions:['Neutral','Attentive','Curious','Sleepy'],note:'使用本地V2.9 release.json及其真实Core/WebGL资源。设置live2d.root或插件live2dRoot；须npm install安装playwright并提供Chromium。逐帧60fps导出，音频振幅驱动口型；分镜可选动作/表情。横屏右侧、竖屏下方，box可自定义0到1位置尺寸。静态视频中的互动为预编排表演，不是观众实时输入；不使用摄像头或麦克风。没有资源时明确失败，不用静态图片冒充。'},
     video_formats: {default:'1080p', fps:60, bilibili:{'1080p':[1920,1080], '2k':[2560,1440]}, douyin:{'1080p':[1080,1920], '2k':[1440,2560]}, note:'resolution可设1080p或2k，2K采用2560×1440；请求优先于项目JSON，帧率固定60fps。'},
     project: {title:'视频标题', characters:{'旁白':{gpt_weights:'/absolute/voice.ckpt', sovits_weights:'/absolute/voice.pth', ref_audio_path:'/absolute/reference.wav', prompt_text:'参考音频原文', prompt_lang:'zh', text_lang:'zh'}}, scenes:[{speaker:'旁白', heading:'开场', text:'旁白台词', image:'/absolute/optional-image.png'}]},
     note: 'characters使用指定技能格式。模型、参考音频须真实存在，先voice dry_run再短句试听。render也可用每段audio字段导入已有配音，结果标记provided_audio。字体默认macOS苹方；可配置project.font。'
