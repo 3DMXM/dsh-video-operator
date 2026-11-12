@@ -5,6 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { buildGuide } from './persona.js'
 
 const root = dirname(fileURLToPath(import.meta.url))
 // Resolve from the running DSH installation, including Desktop's ASAR tree.
@@ -28,11 +29,13 @@ export const inject = ['tools']
 const venvBin = join(root, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin')
 const localPython = join(venvBin, process.platform === 'win32' ? 'python.exe' : 'python')
 const localBili = join(venvBin, process.platform === 'win32' ? 'bili.exe' : 'bili')
+const localPersona = resolve(root, '..', 'glossmod', '看板娘', 'mod-inn-muduo', 'readme.md')
 export const Config = Schema.object({
   pythonPath: Schema.string().default(existsSync(localPython) ? localPython : (process.platform === 'win32' ? 'python' : 'python3')).description('Python 3.10+ executable with Pillow installed'),
   stateDir: Schema.string().default(join(homedir(), '.local/share/dsh-video-operator')).description('Local plans, audit log and isolated Bilibili credentials'),
   sovitsSkillDir: Schema.string().default(join(homedir(), '.codex', 'skills', 'gpt-sovits')).description('GPT-SoVITS skill directory'),
   biliExecutable: Schema.string().default(existsSync(localBili) ? localBili : '').description('Absolute path to bili executable (bili-agent)'),
+  personaPath: Schema.string().default(existsSync(localPersona) ? localPersona : '').description('Local 沐朵 persona Markdown path; empty uses the bundled persona. Re-read on each guide call.'),
   douyinCredentials: Schema.string().default('').description('Path to private JSON with open_id and access_token; never enter tokens here'),
 }).description('Video operator / 视频创作运营')
 
@@ -72,7 +75,12 @@ export async function runBackend(config, backend, request, signal) {
 }
 
 export const guide = {
-  workflow: '选题与脚本 → 分镜JSON → GPT-SoVITS短句试听 → 横/竖屏合成 → 检查成片 → 发布预览 → 用户明确要求发布后执行 → 查审核与数据 → 拟定评论回复并预览',
+  platform_definitions: {
+    bilibili:{orientation:'landscape',publish_rule:'只发横屏，显示宽度必须大于高度；竖屏和方形视频拒绝发布。',creation:'沐朵主持的Mod客栈宣传、教程、版本说明与答疑；横屏排版，步骤完整。'},
+    douyin:{orientation:'portrait',publish_rule:'只发竖屏，显示高度必须大于宽度；横屏和方形视频拒绝发布。',creation:'沐朵主持的Mod客栈宣传、单问题教程与答疑；竖屏排版，开头直接说明问题与用途。'},
+    validation:'发布预览及执行前均读取真实视频流，按旋转元数据和像素宽高比确定显示方向；不只信任文件名、平台参数或制片清单。',
+  },
+  workflow: '先读取沐朵人设与平台定义 → 选题与脚本 → 分镜JSON → GPT-SoVITS短句试听 → 横/竖屏合成 → 检查成片 → 发布预览 → 用户明确要求发布后执行 → 查审核与数据 → 拟定评论回复并预览',
   studio: {
     doctor: {action:'doctor'},
     voice: {action:'voice', dialogue:'/absolute/dialogue.json', output:'/absolute/new-narration.wav', dry_run:true},
@@ -98,7 +106,7 @@ export function apply(ctx, config) {
     const register = (definition) => cleanups.push(ctx.tools.register(defineTool({
       ...definition, output:{schema:{type:'json'}, render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
     })))
-    register({name:'video_operator_guide', description:'获取视频创作运营工作流、分镜项目格式、GPT-SoVITS和双平台接口用法。首次使用先读。', parameters:{}, execute:async()=>guide})
+    register({name:'video_operator_guide', description:'读取沐朵角色人设、B站横屏/抖音竖屏规则、制片格式及平台接口用法。编写脚本、文案或评论草案前先读。', parameters:{}, execute:async()=>buildGuide(guide,config)})
     register({name:'video_studio', description:'检查制片环境、调用本地GPT-SoVITS技能生成配音，或按分镜合成B站横屏/抖音竖屏视频、封面及字幕。', parameters:{request:{type:'json',required:true,description:'action为doctor/voice/render；完整字段见video_operator_guide。'}},execute:(args,exec)=>runBackend(config,'studio',args.request,exec.signal)})
     register({name:'video_platform_read', description:'查询B站/抖音账号、作品、审核状态、评论及视频数据。',parameters:{request:{type:'json',required:true,description:'action为account/videos/status/stats/comments/zones，platform为bilibili/douyin；单作品传video_id。'}},execute:(args,exec)=>{
       if(!['account','videos','status','stats','comments','zones'].includes(args.request.action)) throw new Error('Invalid read action')

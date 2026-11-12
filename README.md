@@ -2,7 +2,7 @@
 
 本地制片、B站与抖音发布、作品和评论运营的 DSH 插件。参考 [dsh-bili-creator](https://github.com/men-qingzheng/dsh-bili-creator) 的“本地制作 + 平台适配”结构，独立实现，插件 ID 为 `video-operator`，可与参考插件区分。配音通过本地 `gpt-sovits` 技能调用 GPT-SoVITS，默认技能目录为 `~/.codex/skills/gpt-sovits`，可在配置中修改。技能脚本、推理环境和模型需自行准备，本仓库不分发模型或替代语音引擎。
 
-[下载 v0.1.1](https://github.com/3DMXM/dsh-video-operator/releases/tag/v0.1.1) · [问题反馈](https://github.com/3DMXM/dsh-video-operator/issues) · [验证记录](VERIFICATION.md)
+[下载 v0.1.2](https://github.com/3DMXM/dsh-video-operator/releases/tag/v0.1.2) · [问题反馈](https://github.com/3DMXM/dsh-video-operator/issues) · [验证记录](VERIFICATION.md)
 
 ## 已实现
 
@@ -32,9 +32,9 @@ uv pip install --python .venv/bin/python -r requirements.txt
 
 然后在 DSH 的“插件 → 添加插件”选择克隆的目录，或让会话通过 `plugin_manager` 安装该目录。插件会自动发现自身 `.venv` 下的 Python 和 bili；未找到时使用系统命令，也可以在插件配置中指定绝对路径。Windows 的虚拟环境命令位于 `.venv/Scripts/`。
 
-也可以下载 Release 中的 `local-dsh-video-operator-0.1.1.tgz`，在插件管理器中安装；安装包不包含 Python 环境，需另行准备环境并配置 `pythonPath` 和 `biliExecutable`。安装结果如提示需要重启，请按提示重启 DSH。
+也可以下载 Release 中的 `local-dsh-video-operator-0.1.2.tgz`，在插件管理器中安装；安装包不包含 Python 环境，需另行准备环境并配置 `pythonPath` 和 `biliExecutable`。安装结果如提示需要重启，请按提示重启 DSH。
 
-系统需有 `ffmpeg`、`ffprobe`。在 DSH 插件配置中可设置 `pythonPath`、`stateDir`、`sovitsSkillDir`、`biliExecutable`、`douyinCredentials`。默认状态目录是 `~/.local/share/dsh-video-operator`，存放发布计划、审计以及独立 B站登录，不把凭证放入源代码包。
+系统需有 `ffmpeg`、`ffprobe`。在 DSH 插件配置中可设置 `pythonPath`、`stateDir`、`sovitsSkillDir`、`biliExecutable`、`douyinCredentials`、`personaPath`。默认状态目录是 `~/.local/share/dsh-video-operator`，存放发布计划、审计以及独立 B站登录，不把凭证放入源代码包。
 
 插件按当前 DSH 0.2.2-rc.2 的实际工具API构建，从正在运行的安装树解析依赖，支持 Electron ASAR；无运行中的 DSH 环境时不能直接用普通 node 加载宿主模块。支持的最低版本通过 package engines 限定。
 
@@ -42,7 +42,7 @@ uv pip install --python .venv/bin/python -r requirements.txt
 
 新会话先调用 `video_operator_guide`。可以直接说：
 
-> 写一段关于XX的脚本，使用七七配音，分别制作B站和抖音版本。先给我试听和成片。
+> 按沐朵人设写一段关于XX的脚本，使用已配置的配音，分别制作B站横屏和抖音竖屏版本。先给我试听和成片。
 >
 > 预览这条视频的B站投稿，标题是XX，标签是XX。
 >
@@ -57,6 +57,21 @@ uv pip install --python .venv/bin/python -r requirements.txt
 - `video_platform_read`：只读查询。
 - `video_platform_preview`：发布或回复预览。
 - `video_platform_execute`：执行已经展示过的计划。
+
+### 平台定义与沐朵人设
+
+| 平台 | 制作和发布方向 | 内容定义 |
+| --- | --- | --- |
+| B站 | 只发横屏，显示宽度 > 高度 | 沐朵主持的Mod客栈宣传、完整教程、版本说明与报错答疑 |
+| 抖音 | 只发竖屏，显示高度 > 宽度 | 同一人设的短宣传、单问题教程与答疑，开头直接说明问题与用途 |
+
+制作时按平台生成对应画布。发布预览与执行前都使用 `ffprobe` 检查真实视频流，结合旋转元数据、像素宽高比判断显示方向；方向不符或方形视频返回 `ORIENTATION_MISMATCH`，不会上传。无效视频或缺少ffprobe也会明确失败。此规则同样适用于外部导入的视频和更新前保存的预览计划，不自动裁切或拉伸素材。
+
+默认创作角色为 **沐朵 · Mod客栈看板娘**：成年女性、白发、无口、冷淡但认真；语速稍慢、音量偏轻、语调平稳，句子简短且保留必要解释；平等对待新手和作者，不毒舌、不撒娇、不装作全知。用于脚本、标题简介、宣传、教程、答疑和评论草案，两平台保持同一人格。
+
+在插件配置的 `personaPath` 指定本地人设Markdown文件，指南每次调用都会读取最新原文。当前工作区若存在相邻的 `glossmod/看板娘/mod-inn-muduo/readme.md`，会自动作为默认来源；其他安装使用随包整理的 [沐朵设定](prompts/muduo.md)。显式配置文件缺失、为空或超过64KiB会报错，不静默替换。创作前调用 `video_operator_guide` 同时获得人设与平台规则。
+
+人设指导会话模型创作，不自动审核每句文案，也不改变GPT-SoVITS音色、模型或参考音频。配音使用用户已配置且拥有使用权的声音；本包不包含角色图像、声音模型或参考音频。
 
 ### 配音和制片
 
@@ -123,6 +138,7 @@ BILI_CLI_HOME="$HOME/.local/share/dsh-video-operator/bili-cli" .venv/bin/bili au
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
+node --test tests/persona.test.mjs
 .venv/bin/python tests/smoke_media.py
 ```
 

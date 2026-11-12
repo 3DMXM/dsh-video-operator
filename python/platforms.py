@@ -8,6 +8,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+from fractions import Fraction
 from common import Failure, cli, digest, load, lock, save
 
 DOUYIN = 'https://open.douyin.com'
@@ -59,6 +60,53 @@ def bili(req, args):
     if p.returncode: raise Failure('BILI_FAILED', f'bili exited {p.returncode}')
     return result.get('data')
 
+def probe_video(path):
+    if not shutil.which('ffprobe'):
+        raise Failure('FFPROBE_MISSING', '发布方向校验需要ffprobe，请安装FFmpeg')
+    try:
+        p = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'V:0',
+                            '-show_streams', '-of', 'json', str(path)],
+                           capture_output=True, text=True, timeout=30)
+        streams = json.loads(p.stdout).get('streams', []) if p.returncode == 0 else []
+        if not streams:
+            raise ValueError('no video stream')
+        return streams[0]
+    except (ValueError, KeyError, subprocess.SubprocessError) as e:
+        raise Failure('INVALID_VIDEO', '无法读取视频画面，请确认文件是有效视频') from e
+
+def validate_orientation(path, platform):
+    if platform not in ('bilibili', 'douyin'):
+        raise Failure('INVALID_PLATFORM', str(platform))
+    stream = probe_video(path)
+    try:
+        width, height = int(stream['width']), int(stream['height'])
+        if width <= 0 or height <= 0:
+            raise ValueError('invalid dimensions')
+        sar_text = stream.get('sample_aspect_ratio', '1:1')
+        sar = Fraction(sar_text.replace(':', '/')) if sar_text not in ('N/A', '0:1', None) else Fraction(1)
+        if sar <= 0:
+            raise ValueError('invalid sample aspect ratio')
+        display_width, display_height = width * sar, Fraction(height)
+        rotation = float((stream.get('tags') or {}).get('rotate', 0))
+        for side in stream.get('side_data_list', []):
+            if 'rotation' in side:
+                rotation = float(side['rotation'])
+                break
+        angle = rotation % 360
+        if not any(abs(angle - a) < .01 for a in (0, 90, 180, 270, 360)):
+            raise ValueError('non-right-angle rotation')
+        if abs(angle - 90) < .01 or abs(angle - 270) < .01:
+            display_width, display_height = display_height, display_width
+    except (ValueError, TypeError, KeyError, ZeroDivisionError, OverflowError) as e:
+        raise Failure('INVALID_VIDEO_GEOMETRY', '无法可靠确定视频显示方向，请先转码为标准横屏或竖屏') from e
+    orientation = 'landscape' if display_width > display_height else 'portrait' if display_width < display_height else 'square'
+    expected = 'landscape' if platform == 'bilibili' else 'portrait'
+    if orientation != expected:
+        rule = 'B站只发横屏视频（显示宽度必须大于高度）' if platform == 'bilibili' else '抖音只发竖屏视频（显示高度必须大于宽度）'
+        raise Failure('ORIENTATION_MISMATCH', f'{rule}；当前文件为{orientation}')
+    return {'width': width, 'height': height, 'display_width': float(display_width),
+            'display_height': float(display_height), 'rotation': rotation, 'orientation': orientation}
+
 def normalize(req):
     platform = required(req, 'platform')
     if platform not in ('bilibili', 'douyin'): raise Failure('INVALID_PLATFORM', platform)
@@ -70,7 +118,8 @@ def normalize(req):
         if not 1 <= len(title) <= (80 if platform == 'bilibili' else 55):
             raise Failure('INVALID_TITLE', '标题长度不符合平台限制')
         plan = {'platform': platform, 'operation': action, 'video': str(video), 'video_sha256': digest(video), 'title': title,
-                'description': req.get('description', ''), 'tags': req.get('tags', []), 'ai_generated': True}
+                'description': req.get('description', ''), 'tags': req.get('tags', []), 'ai_generated': True,
+                'video_geometry': validate_orientation(video, platform)}
         if platform == 'bilibili' and not 1 <= len(plan['tags']) <= 10:
             raise Failure('INVALID_TAGS', 'B站需1到10个标签')
         for key in ('cover', 'tid', 'zone', 'schedule'):
@@ -132,6 +181,7 @@ def dispatch(req):
             if plan['operation'] == 'publish':
                 for key in ('video', 'cover'):
                     if plan.get(key) and digest(plan[key]) != plan[key+'_sha256']: raise Failure('FILE_CHANGED', '文件已变化，请重新预览')
+                validate_orientation(plan['video'], plan['platform'])
             entry.update(status='attempted', attempted=time.time())
             save(file, entry)
             try:

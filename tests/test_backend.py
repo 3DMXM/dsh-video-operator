@@ -17,6 +17,9 @@ class PlatformTests(unittest.TestCase):
         self.state = Path(self.tmp.name)
         self.video = self.state/'sample.mp4'
         self.video.write_bytes(b'fixture-video')
+        self.video_probe = patch.object(platforms, 'probe_video', return_value={'width':1920,'height':1080})
+        self.mock_probe = self.video_probe.start()
+        self.addCleanup(self.video_probe.stop)
         self.req = dict(action='preview', platform='bilibili', operation='publish', state_dir=str(self.state), video=str(self.video), title='测试', tags=['知识'])
     def test_preview_never_calls_platform(self):
         with patch.object(platforms, 'perform', side_effect=AssertionError('network')):
@@ -54,6 +57,7 @@ class PlatformTests(unittest.TestCase):
         with self.assertRaises(Failure):
             platforms.dispatch(dict(action='execute',plan_id='../credential',state_dir=str(self.state)))
     def test_douyin_declaration_and_limit(self):
+        self.mock_probe.return_value = {'width':1080,'height':1920}
         req = dict(self.req, platform='douyin', tags=['知识'])
         self.assertIn('#AI生成', platforms.dispatch(req)['plan']['text'])
         with self.assertRaises(Failure): platforms.dispatch(dict(req, title='字'*55))
@@ -73,6 +77,7 @@ class PlatformTests(unittest.TestCase):
         self.assertNotEqual(first['plan_id'],second['plan_id'])
         self.assertEqual(first['plan'],second['plan'])
     def test_douyin_upload_then_create(self):
+        self.mock_probe.return_value = {'width':1080,'height':1920}
         plan = platforms.normalize(dict(self.req,platform='douyin'))
         with patch.object(platforms,'request_api',side_effect=[{'video':{'video_id':'uploaded'}},{'item_id':'created'}]) as api:
             (self.state/'creds.json').write_text('{"open_id":"id","access_token":"secret"}')
@@ -85,6 +90,25 @@ class PlatformTests(unittest.TestCase):
         with patch.object(platforms,'bili',return_value={}) as bili:
             platforms.perform({},plan)
         self.assertIn('--ai-declare',bili.call_args.args[1])
+    def test_wrong_orientation_creates_no_plan(self):
+        with self.assertRaises(Failure) as error:
+            platforms.dispatch(dict(self.req,platform='douyin'))
+        self.assertEqual(error.exception.code,'ORIENTATION_MISMATCH')
+        self.assertFalse((self.state/'plans').exists())
+    def test_execute_revalidates_legacy_plan(self):
+        preview = platforms.dispatch(self.req)
+        file = self.state/'plans'/f'{preview["plan_id"]}.json'
+        entry = load(file)
+        entry['plan'].pop('video_geometry')
+        from common import save
+        save(file,entry)
+        self.mock_probe.return_value = {'width':1080,'height':1920}
+        with patch.object(platforms,'perform') as perform:
+            with self.assertRaises(Failure) as error:
+                platforms.dispatch(dict(action='execute',plan_id=preview['plan_id'],state_dir=str(self.state)))
+        self.assertEqual(error.exception.code,'ORIENTATION_MISMATCH')
+        perform.assert_not_called()
+        self.assertEqual(load(file)['status'],'preview')
     def test_srt_timing(self):
         self.assertEqual(stamp(3661.123), '01:01:01,123')
 

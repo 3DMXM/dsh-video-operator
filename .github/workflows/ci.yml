@@ -20,6 +20,8 @@ jobs:
           node-version: '22'
       - name: Run offline regression tests
         run: python -m unittest discover -s tests -v
+      - name: Test persona loading
+        run: node --test tests/persona.test.mjs
       - name: Check host module syntax
         run: node --check index.js
       - name: Verify package inventory
