@@ -1,0 +1,17 @@
+{
+  "title": "视频创作插件试片",
+  "characters": {
+    "旁白": {
+      "gpt_weights": "../voices/narrator/voice.ckpt",
+      "sovits_weights": "../voices/narrator/voice.pth",
+      "ref_audio_path": "../voices/narrator/reference.wav",
+      "prompt_text": "请替换为参考音频中实际说出的准确原文。",
+      "prompt_lang": "zh",
+      "text_lang": "zh"
+    }
+  },
+  "scenes": [
+    {"speaker": "旁白", "heading": "从想法到视频", "text": "欢迎来到视频创作工作室。"},
+    {"speaker": "旁白", "heading": "双平台运营", "text": "制作完成后，可以分别发布到哔哩哔哩和抖音。"}
+  ]
+}

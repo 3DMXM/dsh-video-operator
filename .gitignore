@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+test-output/
+dist/
+.env
+*credential*.json
+voices/
+*.ckpt
+*.pth
+*.wav
+*.mp4
+.DS_Store
